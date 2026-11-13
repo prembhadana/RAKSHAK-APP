@@ -23,12 +23,12 @@ jobs:
         with:
           gradle-version: "8.9"
 
-      - name: Build Parent APK
-        run: gradle assembleParentDebug --stacktrace
+      - name: Build Parent and Child APKs
+        run: gradle assembleParentDebug assembleChildDebug --stacktrace
 
-      - name: Upload Parent APK
+      - name: Upload APK files
         uses: actions/upload-artifact@v4
         with:
-          name: rakshak-parent-debug-apk
-          path: app/build/outputs/apk/parent/debug/*.apk
+          name: rakshak-debug-apks
+          path: app/build/outputs/apk/**/*.apk
           if-no-files-found: error
