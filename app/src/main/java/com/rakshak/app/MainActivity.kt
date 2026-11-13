@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -16,11 +17,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
@@ -28,6 +29,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 class MainActivity : ComponentActivity() {
@@ -45,11 +49,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    if (BuildConfig.FLAVOR == "parent") {
-                        ParentHome()
-                    } else {
-                        ChildHome(this)
-                    }
+                    if (BuildConfig.FLAVOR == "parent") ParentHome(this) else ChildHome(this)
                 }
             }
         }
@@ -57,7 +57,10 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun ParentHome() {
+private fun ParentHome(context: Context) {
+    var refreshedAt by remember { mutableStateOf(currentTime()) }
+    var dialog by remember { mutableStateOf<String?>(null) }
+
     Column(
         modifier = Modifier.fillMaxSize().padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -65,18 +68,55 @@ private fun ParentHome() {
         Text("RAKSHAK", style = MaterialTheme.typography.headlineMedium, color = Color.White)
         Text("Parent Dashboard", style = MaterialTheme.typography.titleLarge)
         Card(modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Welcome, Parent", style = MaterialTheme.typography.titleMedium)
-                Text("Your family safety dashboard will appear here.")
-                Text("Next: secure parent-child pairing and cloud sync.")
+                Text("Dashboard refreshed: $refreshedAt")
+                Button(
+                    onClick = {
+                        refreshedAt = currentTime()
+                        Toast.makeText(context, "Dashboard refreshed", Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Refresh Dashboard") }
             }
         }
         Card(modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Safety first", style = MaterialTheme.typography.titleMedium)
-                Text("Rakshak is designed for transparent, consent-based child safety. It does not read private chats or record calls.")
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Family connection", style = MaterialTheme.typography.titleMedium)
+                Text("No child device is connected yet.")
+                Button(
+                    onClick = { dialog = "pair" },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Set Up Child Device") }
             }
         }
+        OutlinedButton(
+            onClick = { dialog = "safety" },
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Safety & Privacy Guide") }
+
+        Text(
+            "Note: Parent-child pairing and cloud sync are not active in this build. This screen will not show child data until secure pairing is implemented.",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFFCBD5E1)
+        )
+    }
+
+    if (dialog != null) {
+        val isPair = dialog == "pair"
+        AlertDialog(
+            onDismissRequest = { dialog = null },
+            title = { Text(if (isPair) "Set up Child Device" else "Safety & Privacy") },
+            text = {
+                Text(
+                    if (isPair) "Install the RAKSHAK Child app on the child's device. Secure account sign-in and pairing are not available in this build yet, so the devices cannot connect at this stage."
+                    else "RAKSHAK is intended for transparent family safety. App usage access must be enabled by the device user. This starter build does not read private chats, recover deleted messages, or record calls."
+                )
+            },
+            confirmButton = {
+                Button(onClick = { dialog = null }) { Text("Got it") }
+            }
+        )
     }
 }
 
@@ -84,10 +124,15 @@ private fun ParentHome() {
 private fun ChildHome(context: Context) {
     var usageRows by remember { mutableStateOf(readUsage(context)) }
     var selectedEvidence by remember { mutableStateOf<String?>(null) }
+    var showUsageHelp by remember { mutableStateOf(false) }
+
     val photoPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         selectedEvidence = uri?.toString()
+        if (uri != null) {
+            Toast.makeText(context, "Image selected on this device", Toast.LENGTH_SHORT).show()
+        }
     }
 
     Column(
@@ -96,28 +141,34 @@ private fun ChildHome(context: Context) {
     ) {
         Text("RAKSHAK", style = MaterialTheme.typography.headlineMedium, color = Color.White)
         Text("Child Safety Space", style = MaterialTheme.typography.titleLarge)
-        Text("Your safety matters. You can share a concern with your parent.")
+        Text("Your safety matters. You can choose to share a concern with your parent.")
         Button(
             onClick = {
-                context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+                try {
+                    context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+                } catch (_: Exception) {
+                    Toast.makeText(context, "Usage Access settings could not be opened on this device", Toast.LENGTH_LONG).show()
+                }
             },
             modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Open Usage Access Settings")
-        }
+        ) { Text("Open Usage Access Settings") }
+
         Button(
-            onClick = { usageRows = readUsage(context) },
+            onClick = {
+                usageRows = readUsage(context)
+                if (usageRows.isEmpty()) showUsageHelp = true
+                else Toast.makeText(context, "Usage list refreshed", Toast.LENGTH_SHORT).show()
+            },
             modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Refresh today's app usage")
-        }
+        ) { Text("Refresh Today's App Usage") }
+
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("App usage today", style = MaterialTheme.typography.titleMedium)
                 if (usageRows.isEmpty()) {
-                    Text("No usage data available. Allow Usage Access above, then refresh.")
+                    Text("No usage data available. Enable Usage Access above, return here, then refresh.")
                 } else {
-                    usageRows.take(6).forEach { row ->
+                    usageRows.take(8).forEach { row ->
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text(row.first, modifier = Modifier.weight(1f))
                             Text(row.second)
@@ -129,22 +180,35 @@ private fun ChildHome(context: Context) {
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Report a safety concern", style = MaterialTheme.typography.titleMedium)
-                Text("Choose a screenshot or image you want to share with your parent.")
-                Button(onClick = { photoPicker.launch("image/*") }) {
-                    Text("Choose image")
-                }
-                Text(
-                    if (selectedEvidence == null) "No image selected"
-                    else "Image selected on this device. Cloud sharing is not configured yet."
-                )
+                Text("Choose an image that you want to share with your parent.")
+                Button(
+                    onClick = { photoPicker.launch("image/*") },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Choose Image") }
+                Text(if (selectedEvidence == null) "No image selected" else "Image selected on this device. It has not been uploaded or sent.")
             }
         }
         Text(
-            "Usage details stay on this device in this starter version. Private messages, deleted chats and calls are not accessed.",
-            style = MaterialTheme.typography.bodySmall
+            "This starter build keeps usage details and selected images on this device. Parent-child cloud sharing is not active yet.",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFFCBD5E1)
+        )
+    }
+
+    if (showUsageHelp) {
+        AlertDialog(
+            onDismissRequest = { showUsageHelp = false },
+            title = { Text("Usage data unavailable") },
+            text = { Text("Open Usage Access Settings, find RAKSHAK, allow access, return to this app and tap Refresh Today's App Usage.") },
+            confirmButton = {
+                Button(onClick = { showUsageHelp = false }) { Text("OK") }
+            }
         )
     }
 }
+
+private fun currentTime(): String =
+    SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
 
 private fun readUsage(context: Context): List<Pair<String, String>> {
     val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
