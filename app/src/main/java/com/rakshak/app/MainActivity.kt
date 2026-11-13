@@ -34,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import java.security.SecureRandom
@@ -153,7 +154,7 @@ private fun ParentHome(context: Context, email: String, uid: String, onSignOut: 
                         busy = true
                         pairingMessage = ""
                         val code = newPairingCode()
-                        val expiry = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(15)
+                        val expiry = Timestamp(Date(System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(15)))
                         val data = hashMapOf(
                             "parentUid" to uid,
                             "childUid" to null,
@@ -219,7 +220,7 @@ private fun ChildHome(context: Context, email: String, uid: String, onSignOut: (
                             val snapshot = transaction.get(ref)
                             val parentUid = snapshot.getString("parentUid")
                             val childUid = snapshot.getString("childUid")
-                            val expiry = snapshot.getLong("expiresAt") ?: 0L
+                            val expiry = snapshot.getTimestamp("expiresAt")?.toDate()?.time ?: 0L
                             if (!snapshot.exists() || parentUid.isNullOrBlank()) throw IllegalStateException("Invalid pairing code.")
                             if (expiry < System.currentTimeMillis()) throw IllegalStateException("This pairing code has expired. Ask your parent for a new one.")
                             if (!childUid.isNullOrBlank()) throw IllegalStateException("This pairing code has already been used.")
