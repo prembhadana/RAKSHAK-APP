@@ -1,0 +1,34 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /pairingInvites/{code} {
+      // A signed-in parent can create an invite only for their own account.
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['parentUid', 'childUid', 'createdAt', 'expiresAt'])
+        && request.resource.data.parentUid == request.auth.uid
+        && request.resource.data.childUid == null
+        && request.resource.data.expiresAt is int
+        && request.resource.data.expiresAt > request.time.toMillis()
+        && request.resource.data.expiresAt <= request.time.toMillis() + 16 * 60 * 1000;
+
+      // The parent can inspect their own invite; a child can read an unused,
+      // unexpired invite only when they already know its high-entropy code.
+      allow get: if request.auth != null && (
+        resource.data.parentUid == request.auth.uid
+        || (resource.data.childUid == null && resource.data.expiresAt > request.time.toMillis())
+        || resource.data.childUid == request.auth.uid
+      );
+      allow list: if request.auth != null && resource.data.parentUid == request.auth.uid;
+
+      // A code can be claimed once, and the claimant cannot change its parent or expiry.
+      allow update: if request.auth != null
+        && resource.data.childUid == null
+        && resource.data.expiresAt > request.time.toMillis()
+        && request.resource.data.parentUid == resource.data.parentUid
+        && request.resource.data.expiresAt == resource.data.expiresAt
+        && request.resource.data.childUid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['childUid', 'claimedAt']);
+      allow delete: if false;
+    }
+  }
+}
