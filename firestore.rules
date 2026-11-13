@@ -2,28 +2,26 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /pairingInvites/{code} {
-      // A signed-in parent can create an invite only for their own account.
+      // Only a signed-in parent may create an invite for their own UID.
       allow create: if request.auth != null
         && request.resource.data.keys().hasOnly(['parentUid', 'childUid', 'createdAt', 'expiresAt'])
         && request.resource.data.parentUid == request.auth.uid
         && request.resource.data.childUid == null
-        && request.resource.data.expiresAt is int
-        && request.resource.data.expiresAt > request.time.toMillis()
-        && request.resource.data.expiresAt <= request.time.toMillis() + 16 * 60 * 1000;
+        && request.resource.data.expiresAt is timestamp
+        && request.resource.data.expiresAt > request.time
+        && request.resource.data.expiresAt <= request.time + duration.value(16, 'm');
 
-      // The parent can inspect their own invite; a child can read an unused,
-      // unexpired invite only when they already know its high-entropy code.
+      // A child can read an unused invite only if they know its 128-bit random code.
       allow get: if request.auth != null && (
         resource.data.parentUid == request.auth.uid
-        || (resource.data.childUid == null && resource.data.expiresAt > request.time.toMillis())
+        || (resource.data.childUid == null && resource.data.expiresAt > request.time)
         || resource.data.childUid == request.auth.uid
       );
-      allow list: if request.auth != null && resource.data.parentUid == request.auth.uid;
 
-      // A code can be claimed once, and the claimant cannot change its parent or expiry.
+      // A code can be claimed once. Parent UID and expiry cannot be changed.
       allow update: if request.auth != null
         && resource.data.childUid == null
-        && resource.data.expiresAt > request.time.toMillis()
+        && resource.data.expiresAt > request.time
         && request.resource.data.parentUid == resource.data.parentUid
         && request.resource.data.expiresAt == resource.data.expiresAt
         && request.resource.data.childUid == request.auth.uid
